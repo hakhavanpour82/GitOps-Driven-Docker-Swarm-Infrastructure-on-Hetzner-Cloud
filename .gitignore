@@ -1,0 +1,16 @@
+# Secrets and state: never commit
+**/credentials/
+*.pem
+*.key
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+tfplan
+.terraform/
+ansible/inventory.ini
+ansible/group_vars/all/vault.yml
+.vault_pass*
+.env
+*.retry
+.DS_Store
