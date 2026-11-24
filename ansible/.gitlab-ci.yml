@@ -1,0 +1,9 @@
+test-runner:
+  image: alpine:latest
+  tags:
+    - docker
+    - GitOps
+  script:
+    - echo "Runner is working!"
+    - uname -a
+

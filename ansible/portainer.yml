@@ -1,0 +1,29 @@
+---
+- name: Deploy Portainer and its agent
+  hosts: manager
+  become: true
+  vars:
+    portainer_version: lts
+  tasks:
+    - name: Create directory
+      ansible.builtin.file:
+        path: /opt/portainer
+        state: directory
+        mode: "0750"
+
+    - name: Render stack file
+      ansible.builtin.template:
+        src: portainer-stack.yml.j2
+        dest: /opt/portainer/portainer-stack.yml
+        mode: "0640"
+
+    - name: Deploy stack
+      ansible.builtin.command: docker stack deploy -c /opt/portainer/portainer-stack.yml portainer
+      register: stack_out
+      changed_when: "'Creating' in stack_out.stdout"
+
+    - name: Wait for the UI port
+      ansible.builtin.wait_for:
+        host: 127.0.0.1
+        port: 9443
+        timeout: 180

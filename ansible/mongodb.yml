@@ -1,0 +1,4 @@
+---
+- name: MongoDB single-node replica set
+  hosts: db
+  roles: [mongodb_server]

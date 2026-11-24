@@ -1,0 +1,17 @@
+---
+- name: Create cAdvisor directory
+  ansible.builtin.file:
+    path: "{{ cadvisor_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ cadvisor_dir }}/docker-compose.yml"
+    mode: "0644"
+
+- name: Start cAdvisor
+  community.docker.docker_compose_v2:
+    project_src: "{{ cadvisor_dir }}"
+    state: present

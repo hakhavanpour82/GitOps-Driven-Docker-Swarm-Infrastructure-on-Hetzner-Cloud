@@ -1,0 +1,12 @@
+---
+- name: Node exporter on all nodes
+  hosts: all
+  roles: [node_exporter]
+
+- name: Monitoring stack (Prometheus, Alertmanager, Blackbox, Grafana)
+  hosts: monitoring
+  roles: [monitoring_stack]
+
+- name: cAdvisor on app nodes
+  hosts: app
+  roles: [cadvisor]

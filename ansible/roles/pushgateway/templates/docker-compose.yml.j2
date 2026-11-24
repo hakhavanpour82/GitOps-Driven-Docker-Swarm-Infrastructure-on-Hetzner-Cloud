@@ -1,0 +1,12 @@
+services:
+  pushgateway:
+    image: {{ pushgateway_image }}
+    container_name: pushgateway
+    restart: unless-stopped
+    command:
+      - --persistence.file=/data/metrics.db
+      - --persistence.interval=5m
+    ports:
+      - "{{ private_ip }}:9091:9091"
+    volumes:
+      - ./data:/data

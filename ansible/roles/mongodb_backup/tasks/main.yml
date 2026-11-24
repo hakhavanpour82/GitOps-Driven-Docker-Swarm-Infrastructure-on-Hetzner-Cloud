@@ -1,0 +1,55 @@
+---
+- name: Check required variables
+  ansible.builtin.assert:
+    that:
+      - backup_s3_endpoint | length > 0
+      - backup_s3_region | length > 0
+      - backup_s3_bucket | length > 0
+      - backup_age_recipient is match('^age1')
+      - vault_s3_access_key is defined
+      - vault_s3_secret_key is defined
+    fail_msg: "Set the backup_* variables in group_vars/db.yml and vault_s3_* in the vault"
+
+- name: Install age, rclone and curl
+  ansible.builtin.apt:
+    name: [age, rclone, curl]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Check mongodump exists in the MongoDB container
+  ansible.builtin.command: "docker exec {{ mongo_container }} mongodump --version"
+  changed_when: false
+
+- name: Backup environment file (contains S3 keys)
+  ansible.builtin.template:
+    src: mongo-backup.env.j2
+    dest: /etc/mongo-backup.env
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+
+- name: Backup script
+  ansible.builtin.copy:
+    src: mongo-backup.sh
+    dest: /usr/local/sbin/mongo-backup.sh
+    owner: root
+    group: root
+    mode: "0750"
+
+- name: systemd service and timer
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: "0644"
+  loop:
+    - mongo-backup.service
+    - mongo-backup.timer
+
+- name: Enable the timer
+  ansible.builtin.systemd:
+    name: mongo-backup.timer
+    daemon_reload: true
+    enabled: true
+    state: started

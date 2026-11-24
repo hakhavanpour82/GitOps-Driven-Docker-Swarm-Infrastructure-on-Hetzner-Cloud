@@ -1,0 +1,36 @@
+---
+monitoring_dir: /opt/monitoring
+
+# Example pins: check the latest stable releases before the first run
+prometheus_image: prom/prometheus:v3.5.0
+alertmanager_image: prom/alertmanager:v0.28.1
+blackbox_image: prom/blackbox-exporter:v0.27.0
+grafana_image: grafana/grafana:12.0.2
+
+prometheus_retention_time: 15d
+prometheus_retention_size: 8GB
+
+node_exporter_port: 9100
+cadvisor_port: 8081
+
+grafana_admin_user: admin
+grafana_admin_password: "{{ vault_grafana_admin_password }}"
+
+alert_smtp_host: "smtp.gmail.com:587"
+alert_smtp_from: "{{ vault_smtp_user }}"
+alert_recipients: []        # set in group_vars/all/monitoring.yml
+
+grafana_public_url: https://grafana.example.com
+prometheus_public_url: https://prometheus.example.com
+alertmanager_public_url: https://alertmanager.example.com
+
+blackbox_http_targets:
+  - https://example.com
+  - https://job.example.com
+  - http://192.168.100.21:8080
+  - http://192.168.100.22:8080
+
+grafana_dashboards:
+  - { id: 1860,  name: node-exporter-full }
+  - { id: 7587,  name: blackbox-exporter }
+  - { id: 14282, name: cadvisor }

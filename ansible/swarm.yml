@@ -1,0 +1,75 @@
+---
+- name: Create the Swarm on the manager
+  hosts: manager
+  become: true
+  tasks:
+    - name: Read swarm state
+      ansible.builtin.shell: "docker info 2>/dev/null | awk '/^ *Swarm:/ {print $2}'"
+      register: swarm_state
+      changed_when: false
+
+    - name: Initialise swarm
+      ansible.builtin.command: >-
+        docker swarm init
+        --advertise-addr {{ private_ip }}
+        --listen-addr {{ private_ip }}:2377
+        --default-addr-pool 10.20.0.0/16
+        --default-addr-pool-mask-length 24
+      when: swarm_state.stdout != 'active'
+
+    - name: Check ingress network MTU
+      shell: |
+        set -o pipefail
+        docker network inspect ingress 2>/dev/null | jq -r '.[0].Options["com.docker.network.driver.mtu"] // "none"' || echo "none"
+      args:
+        executable: /bin/bash
+      register: ingress_mtu
+      changed_when: false
+
+    - name: Recreate ingress network with MTU 1400 (before any service exists)
+      shell: |
+        echo y | docker network rm ingress || true
+        sleep 2
+        docker network create --driver overlay --ingress --opt com.docker.network.driver.mtu=1400 ingress
+      when: ingress_mtu.stdout != "1400"
+
+    - name: Get worker join token
+      ansible.builtin.command: docker swarm join-token -q worker
+      register: worker_token
+      changed_when: false
+      no_log: true
+
+- name: Join the app nodes as workers
+  hosts: app
+  become: true
+  tasks:
+    - name: Read swarm state
+      ansible.builtin.shell: "docker info 2>/dev/null | awk '/^ *Swarm:/ {print $2}'"
+      register: swarm_state
+      changed_when: false
+
+    - name: Join swarm
+      ansible.builtin.command: >-
+        docker swarm join
+        --token {{ hostvars[groups['manager'][0]].worker_token.stdout }}
+        --advertise-addr {{ private_ip }}
+        --listen-addr {{ private_ip }}:2377
+        {{ hostvars[groups['manager'][0]].private_ip }}:2377
+      when: swarm_state.stdout != 'active'
+      no_log: true
+
+- name: Node labels and the application network
+  hosts: manager
+  become: true
+  tasks:
+    - name: Label app nodes
+      ansible.builtin.command: docker node update --label-add role=app hz-de-dev-{{ item }}
+      loop: "{{ groups['app'] }}"
+      changed_when: false
+
+    - name: Create app overlay network (MTU 1400)
+      ansible.builtin.shell: |
+        docker network inspect app_net >/dev/null 2>&1 && echo exists || \
+        docker network create --driver overlay --attachable --opt com.docker.network.driver.mtu=1400 app_net
+      register: app_net
+      changed_when: "'exists' not in app_net.stdout"

@@ -1,0 +1,113 @@
+groups:
+  - name: infrastructure
+    rules:
+      - alert: Watchdog
+        expr: vector(1)
+        labels: { severity: none }
+        annotations:
+          summary: "Always firing; used as a dead-man's switch"
+
+      - alert: InstanceDown
+        expr: up{job=~"node|cadvisor"} == 0
+        for: 3m
+        labels: { severity: critical }
+        annotations:
+          summary: "{{ $labels.host }} ({{ $labels.job }}) is down"
+
+      - alert: HighCpu
+        expr: 100 - (avg by (host) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 85
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "CPU above 85% on {{ $labels.host }}"
+
+      - alert: HighMemory
+        expr: (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) * 100 > 90
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Memory above 90% on {{ $labels.host }}"
+
+      - alert: DiskAlmostFull
+        expr: (1 - node_filesystem_avail_bytes{fstype=~"ext4|xfs"} / node_filesystem_size_bytes{fstype=~"ext4|xfs"}) * 100 > 85
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Disk {{ $labels.mountpoint }} above 85% on {{ $labels.host }}"
+
+      - alert: DiskFillingFast
+        expr: predict_linear(node_filesystem_avail_bytes{fstype=~"ext4|xfs"}[6h], 24 * 3600) < 0
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "Disk {{ $labels.mountpoint }} on {{ $labels.host }} will fill within 24h"
+
+  - name: containers
+    rules:
+      - alert: ContainerRestarting
+        expr: changes(container_start_time_seconds{name!=""}[15m]) > 2
+        labels: { severity: warning }
+        annotations:
+          summary: "Container {{ $labels.name }} on {{ $labels.host }} restarted more than twice in 15m"
+
+  - name: endpoints
+    rules:
+      - alert: EndpointDown
+        expr: probe_success == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Endpoint {{ $labels.instance }} is failing"
+
+      - alert: EndpointSlow
+        expr: probe_duration_seconds > 5
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "Endpoint {{ $labels.instance }} responds slowly (>5s for 5m)"
+
+      - alert: TlsCertExpiring
+        expr: (probe_ssl_earliest_cert_expiry - time()) / 86400 < 14
+        for: 1h
+        labels: { severity: warning }
+        annotations:
+          summary: "TLS certificate for {{ $labels.instance }} expires in under 14 days"
+
+  - name: mongodb
+    rules:
+      - alert: MongoDBExporterDown
+        expr: up{job="mongodb"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "Cannot scrape MongoDB exporter on {{ $labels.host }}"
+
+      - alert: MongoDBDown
+        expr: mongodb_up == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "MongoDB on {{ $labels.host }} is not reachable by its exporter"
+
+  - name: backups
+    rules:
+      - alert: MongoBackupStale
+        expr: time() - mongo_backup_last_success_timestamp_seconds{job="mongo_backup"} > 8 * 3600
+        for: 10m
+        labels: { severity: critical }
+        annotations:
+          summary: "No successful MongoDB backup for more than 8 hours"
+
+      - alert: MongoBackupFailed
+        expr: mongo_backup_last_status{job="mongo_backup"} == 0
+        for: 5m
+        labels: { severity: critical }
+        annotations:
+          summary: "The last MongoDB backup run failed"
+
+      - alert: MongoBackupNeverReported
+        expr: absent(mongo_backup_last_success_timestamp_seconds{job="mongo_backup"})
+        for: 30m
+        labels: { severity: warning }
+        annotations:
+          summary: "No MongoDB backup success has ever been reported"

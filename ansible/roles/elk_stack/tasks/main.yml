@@ -1,0 +1,163 @@
+---
+- name: Check required variables
+  ansible.builtin.assert:
+    that:
+      - vault_elastic_password is defined
+      - vault_kibana_system_password is defined
+      - vault_filebeat_writer_password is defined
+      - vault_kibana_encryption_key is defined
+      - vault_kibana_encryption_key | length >= 32
+    fail_msg: "Add the four vault_ variables to group_vars/all/vault.yml (encryption key needs 32+ characters)"
+
+- name: Kernel setting Elasticsearch needs (persistent)
+  ansible.builtin.copy:
+    dest: /etc/sysctl.d/99-elasticsearch.conf
+    content: "vm.max_map_count=262144\n"
+    mode: "0644"
+
+- name: Apply kernel setting now
+  ansible.builtin.command: sysctl -w vm.max_map_count=262144
+  changed_when: false
+
+- name: Create ELK directory
+  ansible.builtin.file:
+    path: "{{ elk_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Compose file (contains secrets)
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ elk_dir }}/docker-compose.yml"
+    mode: "0600"
+
+- name: Start Elasticsearch first
+  community.docker.docker_compose_v2:
+    project_src: "{{ elk_dir }}"
+    services: [elasticsearch]
+    state: present
+
+- name: Wait for Elasticsearch
+  ansible.builtin.uri:
+    url: "http://{{ private_ip }}:9200/_cluster/health"
+    url_username: elastic
+    url_password: "{{ elastic_password }}"
+    force_basic_auth: true
+    status_code: 200
+  register: es_health
+  until: es_health.status == 200
+  retries: 30
+  delay: 10
+  no_log: true
+
+- name: Retention policy (delete after N days)
+  ansible.builtin.uri:
+    url: "http://{{ private_ip }}:9200/_ilm/policy/applyops-logs"
+    method: PUT
+    url_username: elastic
+    url_password: "{{ elastic_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      policy:
+        phases:
+          delete:
+            min_age: "{{ log_retention_days }}d"
+            actions:
+              delete: {}
+  no_log: true
+
+- name: Index template (0 replicas, retention policy)
+  ansible.builtin.uri:
+    url: "http://{{ private_ip }}:9200/_index_template/applyops-logs"
+    method: PUT
+    url_username: elastic
+    url_password: "{{ elastic_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      index_patterns: ["applyops-*"]
+      priority: 200
+      template:
+        settings:
+          index.number_of_shards: 1
+          index.number_of_replicas: 0
+          index.lifecycle.name: applyops-logs
+  no_log: true
+
+- name: Role for Filebeat (write only to applyops-*)
+  ansible.builtin.uri:
+    url: "http://{{ private_ip }}:9200/_security/role/filebeat_writer"
+    method: PUT
+    url_username: elastic
+    url_password: "{{ elastic_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      cluster: ["monitor"]
+      indices:
+        - names: ["applyops-*"]
+          privileges: ["create_index", "create_doc", "index", "auto_configure"]
+  no_log: true
+
+- name: User for Filebeat
+  ansible.builtin.uri:
+    url: "http://{{ private_ip }}:9200/_security/user/filebeat_writer"
+    method: PUT
+    url_username: elastic
+    url_password: "{{ elastic_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      password: "{{ filebeat_writer_password }}"
+      roles: ["filebeat_writer"]
+  no_log: true
+
+- name: Password for the kibana_system user
+  ansible.builtin.uri:
+    url: "http://{{ private_ip }}:9200/_security/user/kibana_system/_password"
+    method: POST
+    url_username: elastic
+    url_password: "{{ elastic_password }}"
+    force_basic_auth: true
+    body_format: json
+    body:
+      password: "{{ kibana_system_password }}"
+  no_log: true
+
+- name: Start the full stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ elk_dir }}"
+    state: present
+
+- name: Wait for Kibana
+  ansible.builtin.uri:
+    url: "http://{{ private_ip }}:5601/api/status"
+    url_username: elastic
+    url_password: "{{ elastic_password }}"
+    force_basic_auth: true
+    status_code: 200
+  register: kb_status
+  until: kb_status.status == 200
+  retries: 30
+  delay: 10
+  no_log: true
+
+- name: Create the Kibana data view for applyops-* (400 means it already exists)
+  ansible.builtin.uri:
+    url: "http://{{ private_ip }}:5601/api/data_views/data_view"
+    method: POST
+    url_username: elastic
+    url_password: "{{ elastic_password }}"
+    force_basic_auth: true
+    headers:
+      kbn-xsrf: "true"
+    body_format: json
+    body:
+      data_view:
+        title: "applyops-*"
+        name: "ApplyOps logs"
+        timeFieldName: "@timestamp"
+    status_code: [200, 400]
+  changed_when: false
+  no_log: true

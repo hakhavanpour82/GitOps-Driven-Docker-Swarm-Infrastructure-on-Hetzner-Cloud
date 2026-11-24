@@ -1,0 +1,124 @@
+---
+- name: Check required variables
+  ansible.builtin.assert:
+    that:
+      - vault_smtp_user is defined
+      - vault_smtp_app_password is defined
+      - vault_grafana_admin_password is defined
+      - alert_recipients | length > 0
+    fail_msg: "Add vault_smtp_user, vault_smtp_app_password, vault_grafana_admin_password to vault.yml and alert_recipients to group_vars/all/monitoring.yml"
+
+- name: Check Docker Compose plugin
+  ansible.builtin.command: docker compose version
+  register: compose_check
+  changed_when: false
+
+- name: Create directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ monitoring_dir }}"
+    - "{{ monitoring_dir }}/prometheus/rules"
+    - "{{ monitoring_dir }}/alertmanager"
+    - "{{ monitoring_dir }}/blackbox"
+    - "{{ monitoring_dir }}/grafana/provisioning/datasources"
+    - "{{ monitoring_dir }}/grafana/provisioning/dashboards"
+    - "{{ monitoring_dir }}/grafana/dashboards"
+
+- name: Prometheus config
+  ansible.builtin.template:
+    src: prometheus.yml.j2
+    dest: "{{ monitoring_dir }}/prometheus/prometheus.yml"
+    mode: "0644"
+  notify: reload prometheus
+
+- name: Alert rules (copied as-is, they contain Go templates)
+  ansible.builtin.copy:
+    src: alert_rules.yml
+    dest: "{{ monitoring_dir }}/prometheus/rules/alert_rules.yml"
+    mode: "0644"
+  notify: reload prometheus
+
+- name: Alertmanager config
+  ansible.builtin.template:
+    src: alertmanager.yml.j2
+    dest: "{{ monitoring_dir }}/alertmanager/alertmanager.yml"
+    mode: "0644"
+  notify: reload alertmanager
+
+- name: SMTP app password file
+  ansible.builtin.copy:
+    content: "{{ vault_smtp_app_password }}"
+    dest: "{{ monitoring_dir }}/alertmanager/smtp_password"
+    owner: root
+    group: "65534"
+    mode: "0640"
+  no_log: true
+  notify: reload alertmanager
+
+- name: Blackbox config
+  ansible.builtin.copy:
+    src: blackbox.yml
+    dest: "{{ monitoring_dir }}/blackbox/blackbox.yml"
+    mode: "0644"
+  notify: reload blackbox
+
+- name: Grafana datasource
+  ansible.builtin.template:
+    src: grafana-datasource.yml.j2
+    dest: "{{ monitoring_dir }}/grafana/provisioning/datasources/prometheus.yml"
+    mode: "0644"
+  notify: restart grafana
+
+- name: Grafana dashboard provider
+  ansible.builtin.template:
+    src: grafana-dashboards.yml.j2
+    dest: "{{ monitoring_dir }}/grafana/provisioning/dashboards/dashboards.yml"
+    mode: "0644"
+  notify: restart grafana
+
+- name: Download community dashboards
+  ansible.builtin.get_url:
+    url: "https://grafana.com/api/dashboards/{{ item.id }}/revisions/latest/download"
+    dest: "{{ monitoring_dir }}/grafana/dashboards/{{ item.name }}.json"
+    mode: "0644"
+    force: false
+  loop: "{{ grafana_dashboards }}"
+  ignore_errors: true
+
+- name: Point dashboards at the provisioned datasource
+  ansible.builtin.replace:
+    path: "{{ monitoring_dir }}/grafana/dashboards/{{ item.name }}.json"
+    regexp: '\$\{DS_[A-Za-z0-9_-]+\}'
+    replace: prometheus
+  loop: "{{ grafana_dashboards }}"
+  failed_when: false
+
+- name: Compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ monitoring_dir }}/docker-compose.yml"
+    mode: "0600"
+
+- name: Start the monitoring stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ monitoring_dir }}"
+    state: present
+
+- name: Wait for Prometheus
+  ansible.builtin.uri:
+    url: http://{{ private_ip }}:9090/-/ready
+  register: prom_ready
+  until: prom_ready.status == 200
+  retries: 12
+  delay: 5
+
+- name: Wait for Grafana
+  ansible.builtin.uri:
+    url: "http://{{ private_ip }}:3000/api/health"
+  register: graf_ready
+  until: graf_ready.status == 200
+  retries: 12
+  delay: 5

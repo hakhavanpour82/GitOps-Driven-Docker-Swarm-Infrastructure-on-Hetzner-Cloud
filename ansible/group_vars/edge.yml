@@ -1,0 +1,4 @@
+ufw_rules_role:
+  - { port: 80,  src: any }    # Hetzner firewall already limits this to Cloudflare
+  - { port: 443, src: any }
+letsencrypt_email: "devopsteamberlin@gmail.com"

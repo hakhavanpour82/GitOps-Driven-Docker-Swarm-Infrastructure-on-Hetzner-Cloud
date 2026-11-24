@@ -1,0 +1,54 @@
+services:
+  mongodb:
+    image: {{ mongo_image }}
+    container_name: mongodb
+    restart: unless-stopped
+    command:
+      - mongod
+      - --replSet
+      - {{ mongo_rs_name }}
+      - --keyFile
+      - /etc/mongo/keyfile
+      - --bind_ip_all
+      - --wiredTigerCacheSizeGB
+      - "{{ mongo_cache_gb }}"
+      - --oplogSize
+      - "{{ mongo_oplog_mb }}"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: "{{ mongo_root_user }}"
+      MONGO_INITDB_ROOT_PASSWORD: "{{ mongo_root_password }}"
+      RS_NAME: "{{ mongo_rs_name }}"
+      RS_HOST: "127.0.0.1:27017"
+      APP_DB: "{{ mongo_app_db }}"
+      APP_USER: "{{ mongo_app_user }}"
+      APP_PASSWORD: "{{ mongo_app_password }}"
+      BACKUP_USER: "{{ mongo_backup_user }}"
+      BACKUP_PASSWORD: "{{ mongo_backup_password }}"
+      MONITOR_USER: "{{ mongo_monitor_user }}"
+      MONITOR_PASSWORD: "{{ mongo_monitor_password }}"
+    ulimits:
+      nofile:
+        soft: 64000
+        hard: 64000
+    ports:
+      - "{{ private_ip }}:27017:27017"
+    volumes:
+      - ./data:/data/db
+      - ./mongo-keyfile:/etc/mongo/keyfile:ro
+      - ./scripts:/scripts:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  exporter:
+    image: {{ exporter_image }}
+    container_name: mongodb_exporter
+    restart: unless-stopped
+    command: ["--compatible-mode"]
+    environment:
+      MONGODB_URI: "mongodb://{{ mongo_monitor_user }}:{{ mongo_monitor_password }}@mongodb:27017/admin?directConnection=true"
+    ports:
+      - "{{ private_ip }}:9216:9216"

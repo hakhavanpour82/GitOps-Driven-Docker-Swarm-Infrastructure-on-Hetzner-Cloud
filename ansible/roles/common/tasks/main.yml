@@ -1,0 +1,160 @@
+---
+- name: Configure persistent NAT default route and DNS on private-only nodes
+  ansible.builtin.copy:
+    dest: /etc/netplan/99-private-nat.yaml
+    mode: "0600"
+    content: |
+      network:
+        version: 2
+        ethernets:
+          enp7s0:
+            routes:
+              - to: default
+                via: 192.168.100.1
+                on-link: true
+            nameservers:
+              addresses:
+  when: inventory_hostname != 'nginx'
+  notify: Apply netplan
+
+
+- name: Remove broken ubuntu.com repository entry
+  ansible.builtin.apt_repository:
+    repo: "deb http://ubuntu.com {{ ansible_facts['distribution_release'] }} universe"
+    state: absent
+    update_cache: false
+
+- name: Enable Ubuntu universe repository
+  ansible.builtin.apt_repository:
+    repo: "deb https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/apt_repository_module.html {{ ansible_facts['distribution_release'] }} universe"
+    state: absent
+    update_cache: false
+
+- name: Enable Ubuntu universe repository
+  ansible.builtin.apt_repository:
+    repo: "deb http://archive.ubuntu.com/ubuntu noble universe"
+    state: present
+    filename: ubuntu-universe
+    update_cache: true
+
+- name: Upgrade packages
+  ansible.builtin.apt:
+    update_cache: true
+    upgrade: dist
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name: [ca-certificates, curl, gnupg, ufw, fail2ban, chrony, unattended-upgrades, htop, jq, rsync, git]
+    state: present
+
+- name: Set server hostname to hz-de-dev-<role>
+  ansible.builtin.hostname:
+    name: "hz-de-dev-{{ inventory_hostname }}"
+
+- name: Set timezone
+  community.general.timezone:
+    name: "{{ timezone }}"
+
+- name: Enable automatic security updates
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    mode: "0644"
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+
+- name: Harden SSH (file name sorts first so it wins over cloud-init)
+  ansible.builtin.copy:
+    dest: /etc/ssh/sshd_config.d/01-hardening.conf
+    mode: "0644"
+    content: |
+      PasswordAuthentication no
+      PermitRootLogin prohibit-password
+      MaxAuthTries 3
+      X11Forwarding no
+  notify: Restart ssh
+
+- name: Set a unique root password (for console login only)
+  ansible.builtin.user:
+    name: root
+    password: >-
+      {{ lookup('ansible.builtin.password', playbook_dir ~ '/credentials/' ~ inventory_hostname ~ '.txt length=24 chars=ascii_letters,digits')
+
+         | password_hash('sha512', 65534 | random(seed=inventory_hostname) | string) }}
+  no_log: true
+
+- name: Ensure journald drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    mode: "0755"
+
+- name: Limit journald size
+  ansible.builtin.copy:
+    dest: /etc/systemd/journald.conf.d/size.conf
+    mode: "0644"
+    content: |
+      [Journal]
+      SystemMaxUse=500M
+  notify: Restart journald
+
+- name: Make sure fail2ban and chrony run
+  ansible.builtin.service:
+    name: "{{ item }}"
+    state: started
+    enabled: true
+  loop: [fail2ban, chrony]
+
+
+- name: Fetch current controller public IP
+  ansible.builtin.uri:
+    url: https://api.ipify.org
+    return_content: true
+  register: controller_public_ip
+  delegate_to: localhost
+  become: false
+  run_once: true
+
+- name: Build dynamic admin_cidrs list
+  ansible.builtin.set_fact:
+    admin_cidrs: "{{ [controller_public_ip.content | trim + '/32'] + (extra_admin_cidrs | default(['10.0.0.0/8'])) }}"
+
+- name: Verify detected admin_cidrs before applying firewall
+  ansible.builtin.assert:
+    that:
+      - controller_public_ip.content | trim is match('^([0-9]{1,3}\.){3}[0-9]{1,3}$')
+    fail_msg: "Invalid IP detected: {{ controller_public_ip.content }}"
+
+# Firewall rules first, enable last, so you cannot lock yourself out
+- name: Allow SSH from admin networks
+  community.general.ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+    src: "{{ item }}"
+  loop: "{{ admin_cidrs }}"
+
+- name: Allow role-specific ports
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.port }}"
+    proto: "{{ item.proto | default('tcp') }}"
+    src: "{{ item.src }}"
+  loop: "{{ (ufw_rules_common | default([])) + (ufw_rules_role | default([])) }}"
+
+- name: Enable UFW with default deny
+  community.general.ufw:
+    state: enabled
+    default: deny
+    direction: incoming
+
+
+- name: Ensure DNS resolvers are configured for private-only nodes
+  ansible.builtin.copy:
+    dest: /etc/systemd/resolved.conf
+    content: |
+      [Resolve]
+      DNS=1.1.1.1 9.9.9.9
+      FallbackDNS=8.8.8.8
+    mode: "0644"
+  notify: Restart systemd-resolved

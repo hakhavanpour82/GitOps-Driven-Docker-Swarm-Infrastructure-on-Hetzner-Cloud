@@ -1,0 +1,22 @@
+---
+- name: Baseline for every server
+  hosts: all
+  become: true
+  roles: [common, node_exporter]
+
+- name: Docker everywhere except the edge server
+  hosts: all
+  become: true
+  roles: [docker]
+
+- name: Kernel setting for Elasticsearch
+  hosts: logging
+  become: true
+  tasks:
+    - name: Set vm.max_map_count
+      ansible.posix.sysctl:
+        name: vm.max_map_count
+        value: "262144"
+        sysctl_set: true
+        state: present
+        reload: true

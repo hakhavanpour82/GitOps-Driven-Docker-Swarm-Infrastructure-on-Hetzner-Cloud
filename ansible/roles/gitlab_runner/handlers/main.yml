@@ -1,0 +1,4 @@
+---
+- name: restart gitlab-runner
+  ansible.builtin.command: docker restart gitlab-runner
+  failed_when: false

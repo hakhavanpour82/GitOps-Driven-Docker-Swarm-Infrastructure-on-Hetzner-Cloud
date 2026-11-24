@@ -1,0 +1,55 @@
+fields:
+  env: prod
+fields_under_root: false
+
+filebeat.inputs:
+{% if 'app' in group_names %}
+  - type: filestream
+    id: docker-containers
+    paths:
+      - /var/lib/docker/containers/*/*-json.log
+    parsers:
+      - container:
+          stream: all
+          format: docker
+    fields:
+      log_type: docker
+    processors:
+      - add_docker_metadata:
+          host: "unix:///var/run/docker.sock"
+      - drop_event:
+          when:
+            equals:
+              container.name: filebeat
+{% endif %}
+{% if 'edge' in group_names %}
+  - type: filestream
+    id: nginx-access
+    paths:
+      - /var/log/nginx/*access*.log
+    fields:
+      log_type: nginx-access
+    processors:
+      - dissect:
+          tokenizer: '%{client_ip} - %{remote_user} [%{ts}] "%{method} %{path} %{http_version}" %{status} %{bytes} "%{referrer}" "%{user_agent}"'
+          field: message
+          target_prefix: nginx
+          ignore_failure: true
+  - type: filestream
+    id: nginx-error
+    paths:
+      - /var/log/nginx/*error*.log
+    fields:
+      log_type: nginx-error
+{% endif %}
+
+setup.ilm.enabled: false
+setup.template.enabled: false
+
+output.elasticsearch:
+  hosts: ["{{ filebeat_es_host }}"]
+  username: filebeat_writer
+  password: "{{ filebeat_password }}"
+  index: "applyops-%{[fields.log_type]}-%{+yyyy.MM.dd}"
+
+logging.level: warning

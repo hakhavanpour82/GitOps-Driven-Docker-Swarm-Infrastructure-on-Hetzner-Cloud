@@ -1,0 +1,62 @@
+---
+- name: Check required variables
+  ansible.builtin.assert:
+    that:
+      - vault_mongo_root_password is defined
+      - vault_mongo_app_password is defined
+      - vault_mongo_backup_password is defined
+      - vault_mongo_monitor_password is defined
+      - vault_mongo_keyfile is defined
+      - vault_mongo_keyfile | length >= 6
+    fail_msg: "Add the five vault_mongo_* variables to group_vars/all/vault.yml"
+
+- name: Create directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ mongo_dir }}"
+    - "{{ mongo_dir }}/data"
+    - "{{ mongo_dir }}/scripts"
+
+- name: Replica set keyFile (the mongod user inside the image is uid 999)
+  ansible.builtin.copy:
+    content: "{{ vault_mongo_keyfile }}"
+    dest: "{{ mongo_dir }}/mongo-keyfile"
+    owner: "999"
+    group: "999"
+    mode: "0400"
+  no_log: true
+  notify: restart mongodb
+
+- name: Bootstrap script
+  ansible.builtin.copy:
+    src: bootstrap.js
+    dest: "{{ mongo_dir }}/scripts/bootstrap.js"
+    mode: "0644"
+
+- name: Compose file (contains secrets)
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ mongo_dir }}/docker-compose.yml"
+    mode: "0600"
+
+- name: Start MongoDB
+  community.docker.docker_compose_v2:
+    project_src: "{{ mongo_dir }}"
+    services: [mongodb]
+    state: present
+
+- name: Create replica set and users (retries while the first start finishes)
+  ansible.builtin.command: docker exec mongodb mongosh --nodb --quiet --norc --file /scripts/bootstrap.js
+  register: bootstrap
+  until: bootstrap.rc == 0
+  retries: 20
+  delay: 6
+  changed_when: "'CHANGED' in bootstrap.stdout"
+
+- name: Start the exporter
+  community.docker.docker_compose_v2:
+    project_src: "{{ mongo_dir }}"
+    state: present

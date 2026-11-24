@@ -1,0 +1,8 @@
+---
+- name: Re-apply monitoring stack (private binding and public URLs)
+  hosts: monitoring
+  roles: [monitoring_stack]
+
+- name: Public HTTPS sites on the edge
+  hosts: edge
+  roles: [edge_monitoring]

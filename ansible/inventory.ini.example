@@ -1,0 +1,26 @@
+[app]
+app1 ansible_host=192.168.100.21 private_ip=192.168.100.21
+app2 ansible_host=192.168.100.22 private_ip=192.168.100.22
+
+[logging]
+elk ansible_host=192.168.100.50 private_ip=192.168.100.50
+
+[db]
+mongodb ansible_host=192.168.100.60 private_ip=192.168.100.60
+
+[monitoring]
+monitoring ansible_host=192.168.100.40 private_ip=192.168.100.40
+
+[edge]
+nginx ansible_host=203.0.113.10 private_ip=192.168.100.10 ansible_ssh_common_args='-o StrictHostKeyChecking=accept-new'
+
+[manager]
+portainer ansible_host=192.168.100.30 private_ip=192.168.100.30
+
+[runner]
+runner ansible_host=192.168.100.31 private_ip=192.168.100.31
+
+[all:vars]
+ansible_user=root
+ansible_ssh_private_key_file=~/.ssh/CHANGE_ME_ed25519
+ansible_ssh_common_args='-o StrictHostKeyChecking=accept-new -o ProxyCommand="ssh -i ~/.ssh/CHANGE_ME_ed25519 -o StrictHostKeyChecking=accept-new -W %h:%p root@203.0.113.10"'

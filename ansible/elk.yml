@@ -1,0 +1,8 @@
+---
+- name: Elasticsearch and Kibana
+  hosts: logging
+  roles: [elk_stack]
+
+- name: Filebeat on app nodes and the Nginx host
+  hosts: app:edge
+  roles: [filebeat]

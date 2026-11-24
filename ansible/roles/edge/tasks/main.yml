@@ -1,0 +1,88 @@
+- name: Install Nginx
+  ansible.builtin.apt:
+    name: nginx
+    state: present
+    update_cache: true
+
+- name: Create Cloudflare SSL directory
+  ansible.builtin.file:
+    path: /etc/ssl/cloudflare
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Copy Cloudflare Origin Certificate
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/credentials/example.com.pem"
+    dest: /etc/ssl/cloudflare/example.com.pem
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Copy Cloudflare Origin Private Key
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/credentials/example.com.key"
+    dest: /etc/ssl/cloudflare/example.com.key
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Reload nginx
+
+- name: Remove default Nginx site
+  ansible.builtin.file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Reload nginx
+
+- name: Deploy job.example.com Nginx config
+  ansible.builtin.template:
+    src: job.example.com.conf.j2
+    dest: /etc/nginx/sites-available/job.example.com.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx
+
+
+- name: Enable IPv4 forwarding in sysctl
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    sysctl_set: true
+    state: present
+    reload: true
+
+- name: Allow routed packet forwarding in UFW
+  ansible.builtin.lineinfile:
+    path: /etc/default/ufw
+    regexp: '^DEFAULT_FORWARD_POLICY='
+    line: 'DEFAULT_FORWARD_POLICY="ACCEPT"'
+  notify: Reload ufw
+
+- name: Add NAT masquerade rule to UFW before.rules
+  ansible.builtin.blockinfile:
+    path: /etc/ufw/before.rules
+    insertbefore: '^\*filter'
+    marker: "# {mark} ANSIBLE NAT GATEWAY"
+    block: |
+      *nat
+      :POSTROUTING ACCEPT [0:0]
+      -A POSTROUTING -s 192.168.100.0/24 -o eth0 -j MASQUERADE
+      COMMIT
+  notify: Reload ufw
+
+    
+- name: Enable job.example.com Nginx config
+  ansible.builtin.file:
+    src: /etc/nginx/sites-available/job.example.com.conf
+    dest: /etc/nginx/sites-enabled/job.example.com.conf
+    state: link
+  notify: Reload nginx
+
+- name: Ensure Nginx is started and enabled
+  ansible.builtin.service:
+    name: nginx
+    state: started
+    enabled: true

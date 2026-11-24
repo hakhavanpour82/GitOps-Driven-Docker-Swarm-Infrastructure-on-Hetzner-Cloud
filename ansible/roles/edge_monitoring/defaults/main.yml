@@ -1,0 +1,14 @@
+---
+letsencrypt_email: ""
+letsencrypt_cert_name: monitoring.example.com
+monitoring_upstream_ip: "{{ hostvars['monitoring'].private_ip }}"
+monitoring_basic_auth_user: ops
+monitoring_basic_auth_password: "{{ vault_monitoring_basic_auth_password }}"
+
+
+monitoring_sites:
+  - { host: grafana.example.com,      port: 3000, auth: false, websocket: true }
+  - { host: prometheus.example.com,   port: 9090, auth: true }
+  - { host: alertmanager.example.com, port: 9093, auth: true }
+  - { host: kibana.example.com,       port: 5601, auth: false, ip: "{{ hostvars['elk'].private_ip }}" }
+

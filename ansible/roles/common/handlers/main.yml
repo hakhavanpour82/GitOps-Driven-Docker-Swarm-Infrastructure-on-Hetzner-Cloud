@@ -1,0 +1,13 @@
+---
+- name: Restart ssh
+  ansible.builtin.service: { name: ssh, state: restarted }
+- name: Restart journald
+  ansible.builtin.service: { name: systemd-journald, state: restarted }
+
+- name: Restart systemd-resolved
+  ansible.builtin.service:
+    name: systemd-resolved
+    state: restarted
+
+- name: Apply netplan
+  ansible.builtin.command: netplan apply

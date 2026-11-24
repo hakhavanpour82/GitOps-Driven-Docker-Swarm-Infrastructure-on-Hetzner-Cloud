@@ -1,0 +1,43 @@
+services:
+  elasticsearch:
+    image: {{ es_image }}
+    container_name: elasticsearch
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      cluster.name: applyops
+      xpack.security.enabled: "true"
+      xpack.security.http.ssl.enabled: "false"
+      ELASTIC_PASSWORD: "{{ elastic_password }}"
+      ES_JAVA_OPTS: "-Xms{{ es_heap }} -Xmx{{ es_heap }}"
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    ports:
+      - "{{ private_ip }}:9200:9200"
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+
+  kibana:
+    image: {{ kibana_image }}
+    container_name: kibana
+    restart: unless-stopped
+    depends_on:
+      - elasticsearch
+    environment:
+      SERVER_NAME: kibana
+      SERVER_HOST: "0.0.0.0"
+      SERVER_PUBLICBASEURL: "{{ kibana_public_url }}"
+      ELASTICSEARCH_HOSTS: "http://elasticsearch:9200"
+      ELASTICSEARCH_USERNAME: kibana_system
+      ELASTICSEARCH_PASSWORD: "{{ kibana_system_password }}"
+      XPACK_SECURITY_ENCRYPTIONKEY: "{{ kibana_encryption_key }}"
+      XPACK_ENCRYPTEDSAVEDOBJECTS_ENCRYPTIONKEY: "{{ kibana_encryption_key }}"
+      XPACK_REPORTING_ENCRYPTIONKEY: "{{ kibana_encryption_key }}"
+      TELEMETRY_OPTIN: "false"
+    ports:
+      - "{{ private_ip }}:5601:5601"
+
+volumes:
+  es-data:

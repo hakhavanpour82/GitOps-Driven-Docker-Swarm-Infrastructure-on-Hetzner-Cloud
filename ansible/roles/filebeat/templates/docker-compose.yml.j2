@@ -1,0 +1,20 @@
+services:
+  filebeat:
+    image: {{ filebeat_image }}
+    container_name: filebeat
+    restart: unless-stopped
+    user: root
+    command: ["filebeat", "-e", "--strict.perms=false"]
+    volumes:
+      - ./filebeat.yml:/usr/share/filebeat/filebeat.yml:ro
+      - filebeat-data:/usr/share/filebeat/data
+{% if 'app' in group_names %}
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+{% endif %}
+{% if 'edge' in group_names %}
+      - /var/log/nginx:/var/log/nginx:ro
+{% endif %}
+
+volumes:
+  filebeat-data:

@@ -1,0 +1,10 @@
+[Unit]
+Description=MongoDB backup every 6 hours
+
+[Timer]
+OnCalendar={{ backup_schedule }}
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

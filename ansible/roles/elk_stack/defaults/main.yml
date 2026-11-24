@@ -1,0 +1,14 @@
+---
+elk_dir: /opt/elk
+elastic_version: "8.17.0"
+es_image: "docker.elastic.co/elasticsearch/elasticsearch:{{ elastic_version }}"
+kibana_image: "docker.elastic.co/kibana/kibana:{{ elastic_version }}"
+
+es_heap: 2g                 # about half of RAM at most; raise if the server has 8 GB or more
+log_retention_days: 14
+
+elastic_password: "{{ vault_elastic_password }}"
+kibana_system_password: "{{ vault_kibana_system_password }}"
+filebeat_writer_password: "{{ vault_filebeat_writer_password }}"
+kibana_encryption_key: "{{ vault_kibana_encryption_key }}"
+kibana_public_url: "https://kibana.example.com"

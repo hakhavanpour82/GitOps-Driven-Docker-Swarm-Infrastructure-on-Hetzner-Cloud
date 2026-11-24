@@ -1,0 +1,3 @@
+gitlab_url: "https://gitlab.com"     # your GitLab URL, no trailing slash
+gitlab_runner_name: hz-de-dev-runner
+gitlab_runner_image: "gitlab/gitlab-runner:v19.6.0"   # match your GitLab version

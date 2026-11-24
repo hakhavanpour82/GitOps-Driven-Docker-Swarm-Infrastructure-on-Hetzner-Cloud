@@ -1,0 +1,30 @@
+---
+- name: Install node exporter
+  ansible.builtin.apt:
+    name: prometheus-node-exporter
+    state: present
+
+- name: Configure node exporter private IP
+  ansible.builtin.copy:
+    dest: /etc/default/prometheus-node-exporter
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      ARGS="--web.listen-address={{ private_ip }}:9100"
+  notify: Restart node exporter
+
+- name: Enable node exporter
+  ansible.builtin.systemd:
+    name: prometheus-node-exporter
+    enabled: true
+    state: started
+
+- name: Validate private IP exists on server
+  ansible.builtin.assert:
+    that:
+      - private_ip is defined
+      - private_ip in ansible_facts['all_ipv4_addresses']
+    fail_msg: "The configured private_ip {{ private_ip }} is not assigned to this server."
+    success_msg: "Private IP {{ private_ip }} validated successfully."
+

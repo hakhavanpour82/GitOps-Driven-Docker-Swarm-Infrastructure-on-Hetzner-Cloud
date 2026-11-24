@@ -1,0 +1,21 @@
+---
+- name: Create directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    mode: "0755"
+  loop:
+    - { path: "{{ pushgateway_dir }}", owner: root }
+    - { path: "{{ pushgateway_dir }}/data", owner: "65534" }
+
+- name: Compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ pushgateway_dir }}/docker-compose.yml"
+    mode: "0644"
+
+- name: Start Pushgateway
+  community.docker.docker_compose_v2:
+    project_src: "{{ pushgateway_dir }}"
+    state: present

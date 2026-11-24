@@ -1,0 +1,5 @@
+timezone: Europe/Berlin
+monitoring_ip: 192.168.100.40
+admin_cidrs: ["176.0.27.129/32"]
+ufw_rules_common:
+  - { port: 9100, src: "{{ monitoring_ip }}" }   # node-exporter

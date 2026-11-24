@@ -1,0 +1,12 @@
+---
+- name: Pushgateway on the monitoring server
+  hosts: monitoring
+  roles: [pushgateway]
+
+- name: Re-apply monitoring config (new scrape job and alerts)
+  hosts: monitoring
+  roles: [monitoring_stack]
+
+- name: MongoDB backup job
+  hosts: db
+  roles: [mongodb_backup]

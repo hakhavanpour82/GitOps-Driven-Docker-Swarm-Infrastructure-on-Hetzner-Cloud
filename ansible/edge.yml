@@ -1,0 +1,5 @@
+- name: Configure Edge Nginx Reverse Proxy
+  hosts: edge
+  become: true
+  roles:
+    - edge

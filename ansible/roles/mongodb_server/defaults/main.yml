@@ -1,0 +1,19 @@
+---
+mongo_dir: /opt/mongodb
+mongo_image: "mongo:7.0"
+exporter_image: "percona/mongodb_exporter:0.43.1"
+
+mongo_rs_name: rs0
+mongo_cache_gb: 1            # WiredTiger cache; keep it near 25% of RAM on a 4 GB server
+mongo_oplog_mb: 1024
+
+mongo_root_user: admin
+mongo_app_db: applyops
+mongo_app_user: applyops_app
+mongo_backup_user: backup
+mongo_monitor_user: monitor
+
+mongo_root_password: "{{ vault_mongo_root_password }}"
+mongo_app_password: "{{ vault_mongo_app_password }}"
+mongo_backup_password: "{{ vault_mongo_backup_password }}"
+mongo_monitor_password: "{{ vault_mongo_monitor_password }}"

@@ -1,0 +1,8 @@
+ufw_rules_role:
+  - { port: 27017, src: 192.168.100.21 }
+  - { port: 27017, src: 192.168.100.22 }
+backup_s3_endpoint: "nbg1.your-objectstorage.com"   # match your bucket's location
+backup_s3_region: "nbg1"
+backup_s3_bucket: "applyops-backups"
+backup_age_recipient: "age1qnah3wjse7lvnjvuv4q809793xyydwma64j2zn64a0x4yjln25gqgp43tw"
+backup_retention_days: 14

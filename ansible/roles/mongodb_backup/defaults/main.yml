@@ -1,0 +1,9 @@
+---
+mongo_container: mongodb
+backup_s3_endpoint: ""
+backup_s3_region: ""
+backup_s3_bucket: ""
+backup_age_recipient: ""
+backup_retention_days: 14
+backup_schedule: "*-*-* 00,06,12,18:20:00"      # UTC, every 6 hours
+pushgateway_url: "http://{{ hostvars['monitoring'].private_ip }}:9091"

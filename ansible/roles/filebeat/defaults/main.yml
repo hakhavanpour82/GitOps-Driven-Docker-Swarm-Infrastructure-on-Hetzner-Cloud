@@ -1,0 +1,7 @@
+---
+filebeat_dir: /opt/filebeat
+filebeat_version: "8.17.0"
+filebeat_image: "docker.elastic.co/beats/filebeat:{{ filebeat_version }}"
+filebeat_es_host: "http://{{ hostvars['elk'].private_ip }}:9200"
+filebeat_password: "{{ vault_filebeat_writer_password }}"
+

@@ -1,0 +1,55 @@
+---
+- name: Check required variables
+  ansible.builtin.assert:
+    that:
+      - gitlab_url is defined
+      - gitlab_url is match('^https?://')
+      - not gitlab_url.endswith('/')
+      - vault_gitlab_runner_token is defined
+      - vault_gitlab_runner_token is match('^glrt-')
+    fail_msg: "Set gitlab_url in group_vars/runner.yml (no trailing slash) and vault_gitlab_runner_token (glrt-...) in the vault"
+
+- name: Create directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ runner_dir }}"
+    - "{{ runner_dir }}/config"
+
+- name: Runner config (contains the token)
+  ansible.builtin.template:
+    src: config.toml.j2
+    dest: "{{ runner_dir }}/config/config.toml"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  notify: restart gitlab-runner
+
+- name: Compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ runner_dir }}/docker-compose.yml"
+    mode: "0644"
+
+- name: Start the runner
+  community.docker.docker_compose_v2:
+    project_src: "{{ runner_dir }}"
+    state: present
+
+- name: Verify the runner can authenticate to GitLab
+  ansible.builtin.command: docker exec gitlab-runner gitlab-runner verify
+  register: runner_verify
+  until: runner_verify.rc == 0 and 'is not valid' not in (runner_verify.stdout + runner_verify.stderr)
+  retries: 6
+  delay: 10
+  changed_when: false
+
+- name: Nightly cleanup of old images and build cache
+  ansible.builtin.cron:
+    name: "docker cleanup for CI builds"
+    minute: "30"
+    hour: "3"
+    job: "docker image prune -af --filter until=168h >/dev/null 2>&1; docker builder prune -af --filter until=168h >/dev/null 2>&1"

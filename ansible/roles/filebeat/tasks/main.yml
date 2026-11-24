@@ -1,0 +1,30 @@
+---
+- name: Check required variable
+  ansible.builtin.assert:
+    that: vault_filebeat_writer_password is defined
+
+- name: Create Filebeat directory
+  ansible.builtin.file:
+    path: "{{ filebeat_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Filebeat config (contains a password)
+  ansible.builtin.template:
+    src: filebeat.yml.j2
+    dest: "{{ filebeat_dir }}/filebeat.yml"
+    owner: root
+    group: root
+    mode: "0600"
+  notify: restart filebeat
+
+- name: Compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ filebeat_dir }}/docker-compose.yml"
+    mode: "0644"
+
+- name: Start Filebeat
+  community.docker.docker_compose_v2:
+    project_src: "{{ filebeat_dir }}"
+    state: present

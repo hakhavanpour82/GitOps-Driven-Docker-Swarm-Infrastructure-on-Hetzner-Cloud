@@ -1,0 +1,13 @@
+[Unit]
+Description=MongoDB backup to object storage
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/mongo-backup.env
+ExecStart=/usr/local/sbin/mongo-backup.sh
+TimeoutStartSec=3h
+Nice=10
+IOSchedulingClass=idle

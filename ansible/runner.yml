@@ -1,0 +1,4 @@
+---
+- name: Dedicated GitLab runner
+  hosts: runner
+  roles: [gitlab_runner]

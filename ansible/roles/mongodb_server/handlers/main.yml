@@ -1,0 +1,4 @@
+---
+- name: restart mongodb
+  ansible.builtin.command: docker restart mongodb
+  failed_when: false

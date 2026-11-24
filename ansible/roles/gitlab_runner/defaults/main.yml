@@ -1,0 +1,7 @@
+---
+runner_dir: /opt/gitlab-runner
+gitlab_runner_image: "gitlab/gitlab-runner:v19.6.0"
+gitlab_runner_name: hz-de-dev-runner
+runner_concurrent: 2
+runner_job_image: "docker:27-cli"
+runner_token: "{{ vault_gitlab_runner_token }}"

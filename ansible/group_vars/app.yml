@@ -1,0 +1,10 @@
+ufw_rules_role:
+  - { port: 7946, src: 192.168.100.21 }
+  - { port: 7946, src: 192.168.100.22 }
+  - { port: 7946, src: 192.168.100.30 }
+  - { port: 7946, proto: udp, src: 192.168.100.21 }
+  - { port: 7946, proto: udp, src: 192.168.100.22 }
+  - { port: 7946, proto: udp, src: 192.168.100.30 }
+  - { port: 4789, proto: udp, src: 192.168.100.21 }
+  - { port: 4789, proto: udp, src: 192.168.100.22 }
+  - { port: 4789, proto: udp, src: 192.168.100.30 }

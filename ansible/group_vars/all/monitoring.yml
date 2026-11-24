@@ -1,0 +1,5 @@
+alert_smtp_host: "smtp.gmail.com:587"
+alert_smtp_from: "applyopsdevops@gmail.com"
+alert_recipients:
+  - "hakhavanpour82@gmail.com"
+  - "hr.khoubbakht@gmail.com"

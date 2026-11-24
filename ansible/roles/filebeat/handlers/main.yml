@@ -1,0 +1,4 @@
+---
+- name: restart filebeat
+  ansible.builtin.command: docker restart filebeat
+  failed_when: false
