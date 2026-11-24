@@ -1,0 +1,82 @@
+stages: [build, deploy]
+
+variables:
+  IMAGE_TAG: $CI_COMMIT_SHORT_SHA          # 8-character commit hash
+  DOCKERFILE: Dockerfile
+  DOCKER_CONTEXT: .
+  GITOPS_PROJECT: applyops/gitops
+  GITOPS_BRANCH: main
+  GITOPS_FILE: stacks/applyops/docker-compose.yml
+
+default:
+  tags: [applyops]
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+
+# Merge requests: prove the image builds, push nothing
+build-check:
+  stage: build
+  image: docker:27-cli
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+  script:
+    - docker build --pull -f "$DOCKERFILE" -t "$CI_REGISTRY_IMAGE:mr-$CI_MERGE_REQUEST_IID" "$DOCKER_CONTEXT"
+
+# Main branch: build and push the image tagged with the commit hash
+build:
+  stage: build
+  image: docker:27-cli
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$CI_REGISTRY"
+    - >-
+      docker build --pull -f "$DOCKERFILE"
+      --label org.opencontainers.image.revision="$CI_COMMIT_SHA"
+      --label org.opencontainers.image.source="$CI_PROJECT_URL"
+      -t "$CI_REGISTRY_IMAGE:$IMAGE_TAG" "$DOCKER_CONTEXT"
+    - docker push "$CI_REGISTRY_IMAGE:$IMAGE_TAG"
+  after_script:
+    - docker logout "$CI_REGISTRY" || true
+
+# Main branch: write the new tag into the GitOps manifest
+deploy:
+  stage: deploy
+  image: alpine:3.20
+  needs: [build]
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+  resource_group: gitops-deploy        # one deploy at a time, no push races
+  variables:
+    GIT_STRATEGY: none
+  before_script:
+    - apk add --no-cache git
+  script:
+    - |
+      set -eu
+      git config --global user.name "applyops-ci"
+      git config --global user.email "ci@example.com"
+      git clone --depth 1 --branch "$GITOPS_BRANCH" "https://oauth2:${GITOPS_TOKEN}@gitlab.com/${GITOPS_PROJECT}.git" gitops
+      cd gitops
+
+      NEW_IMAGE="${CI_REGISTRY_IMAGE}:${IMAGE_TAG}"
+      sed -i -E "s|^([[:space:]]*image:[[:space:]]*)[^[:space:]]+([[:space:]]+# ci-image)|\1${NEW_IMAGE}\2|" "$GITOPS_FILE"
+
+      grep -q "$NEW_IMAGE" "$GITOPS_FILE" || { echo "No '# ci-image' line found in $GITOPS_FILE"; exit 1; }
+      if git diff --quiet; then echo "GitOps already at $NEW_IMAGE"; exit 0; fi
+
+      git add "$GITOPS_FILE"
+      git commit -m "deploy: ${CI_PROJECT_NAME} ${IMAGE_TAG} [skip ci]" \
+                 -m "Source: ${CI_PROJECT_URL}/-/commit/${CI_COMMIT_SHA}" \
+                 -m "Pipeline: ${CI_PIPELINE_URL}"
+
+      for i in 1 2 3 4 5; do
+        if git push origin "HEAD:${GITOPS_BRANCH}"; then exit 0; fi
+        echo "Push rejected, rebasing (attempt $i)"
+        git pull --rebase origin "$GITOPS_BRANCH"
+        sleep $((i * 2))
+      done
+      echo "Could not push to the GitOps repo"; exit 1
