@@ -1,0 +1,62 @@
+version: "3.8"
+
+services:
+  app:
+    # The "# ci-image" marker tells the pipeline which line to update. Keep it.
+    image: registry.gitlab.com/applyops/app:bootstrap # ci-image
+    environment:
+      APP_ENV: production
+      MONGO_URI_FILE: /run/secrets/applyops_mongo_uri
+    secrets:
+      - applyops_mongo_uri
+    ports:
+      - target: 8080
+        published: 8080
+        protocol: tcp
+        mode: ingress
+    networks:
+      - app_net
+    # Enable once the app has a /health URL and the image contains curl (or wget):
+    # healthcheck:
+    #   test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+    #   interval: 15s
+    #   timeout: 5s
+    #   retries: 3
+    #   start_period: 30s
+    deploy:
+      mode: replicated
+      replicas: 2
+      placement:
+        constraints:
+          - node.labels.role == app
+        preferences:
+          - spread: node.id
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+        failure_action: rollback
+        monitor: 30s
+      rollback_config:
+        parallelism: 1
+        order: start-first
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+        reservations:
+          memory: 256M
+
+secrets:
+  applyops_mongo_uri:
+    external: true
+
+networks:
+  app_net:
+    driver: overlay
+    ipam:
+      config:
+        - subnet: 10.210.0.0/24
